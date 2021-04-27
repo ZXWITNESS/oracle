@@ -1,103 +1,120 @@
 
-#实验四
+#实验五
 ####庄向崴 201810414129 18软工一班
 
 ## 实验目的
-#####了解Oracle表和视图的概念，学习使用SQL语句Create Table创建表，学习Select语句插入，修改，删除以及查询数据，学习使用SQL语句创建视图，学习部分存储过程和触发器的使用。
+
+``` 
+了解PL/SQL语言结构
+了解PL/SQL变量和常量的声明和使用方法
+学习条件语句的使用方法
+学习分支语句的使用方法
+学习循环语句的使用方法
+学习常用的PL/SQL函数
+学习包，过程，函数的用法。
+
+```
+
+##实验场景
+假设有一个生产某个产品的单位，单位接受网上订单进行产品的销售。通过实验模拟这个单位的部分信息：员工表，部门表，订单表，订单详单表。
+本实验以实验四为基础
+
 ##实验内容
-#### 录入数据
-#####1、要求至少有1万个订单，每个订单至少有4个详单。至少有两个部门，每个部门至少有1个员工，其中只有一个人没有领导，一个领导至少有一个下属，并且它的下属是另一个人的领导（比如A领导B，B领导C）。
-#### 序列应用
-#####2、插入ORDERS和ORDER_DETAILS 两个表的数据时，主键ORDERS.ORDER_ID, ORDER_DETAILS.ID的值必须通过序列SEQ_ORDER_ID和SEQ_ORDER_ID取得，不能手工输入一个数字。
 
-#### 触发器的应用
-#####3、维护ORDER_DETAILS的数据时（insert,delete,update）要同步更新ORDERS表订单应收货款ORDERS.Trade_Receivable的值。
-#### 查询数据
-1.查询某个员工的信息
-2.递归查询某个员工及其所有下属，子下属员工。
-3.查询订单表，并且包括订单的订单应收货款: Trade_Receivable= sum(订单详单表.ProductNum*订单详单表.ProductPrice)- Discount。
-4.查询订单详表，要求显示订单的客户名称和客户电话，产品类型用汉字描述。
-5.查询出所有空订单，即没有订单详单的订单。
-6.查询部门表，同时显示部门的负责人姓名。
-7.查询部门表，统计每个部门的销售总金额。
-
+#####1.创建一个包(Package)，包名是MyPack。 2.在MyPack中创建一个函数SaleAmount ，查询部门表，统计每个部门的销售总金额，每个部门的销售额是由该部门的员工(ORDERS.EMPLOYEE_ID)完成的销售额之和。函数SaleAmount要求输入的参数是部门号，输出部门的销售金额。 3.在MyPack中创建一个过程，在过程中使用游标，递归查询某个员工及其所有下属，子下属员工。过程的输入参数是员工号，输出员工的ID,姓名，销售总金额。信息用dbms_output包中的put或者put_line函数。输出的员工信息用左添加空格的多少表示员工的层次（LEVEL）。比如下面显示5个员工的信息： 4.由于订单只是按日期分区的，上述统计是全表搜索，因此统计速度会比较慢，如何提高统计的速度呢？
+```
+ID 姓名 销售总金额
+=======================
+2  张三  5000元
+   3 李四   6000元
+   4 王五   1000元
+      5 孙强  2000元
+6  赵强东 5000 元
+```
 
 ##
-##### 第一步：运行sql脚本文件，导入相关的数据
+##### 第一步：创建一个包(Package)，包名是MyPack。
 
-实验四脚本文件:
-运行该脚本的前题条件：
-1.必须在自己的用户下运行,不能在system,sys用户运行
-2.用户必须可以访问表空间USERS和USERS02
-3.用户必须有创建视图权限：Create View
+```SQL
+create or replace PACKAGE MyPack IS
+FUNCTION SaleAmount(V_DEPARTMENT_ID NUMBER) RETURN NUMBER;
+END MyPack;
+```
 
 
 ![查询1结果](p1.png)
 #
 
-##### 第二步：查询某个员工的信息
+##### 第二步：在MyPack中创建一个函数SaleAmount ，查询部门表，统计每个部门的销售总金额，每个部门的销售额是由该部门的员工(ORDERS.EMPLOYEE_ID)完成的销售额之和。函数SaleAmount要求输入的参数是部门号，输出部门的销售金额。
 ```SQL
-select * from employees where EMPLOYEE_ID='1'   
+FUNCTION Get_SaleAmount(V_DEPARTMENT_ID NUMBER) RETURN NUMBER
+  AS
+    N NUMBER(20,2); --注意，订单ORDERS.TRADE_RECEIVABLE的类型是NUMBER(8,2),汇总之后，数据要大得多。
+    BEGIN
+      SELECT SUM(O.TRADE_RECEIVABLE) into N  FROM ORDERS O,EMPLOYEES E
+      WHERE O.EMPLOYEE_ID=E.EMPLOYEE_ID AND E.DEPARTMENT_ID =V_DEPARTMENT_ID;
+      RETURN N;
+    END;
 ```
 ![查询结果](p2.png)
 
-##### 第三步：递归查询某个员工及其所有下属，子下属员工
+##### 第三步：在MyPack中创建一个过程，在过程中使用游标，递归查询某个员工及其所有下属，子下属员工。过程的输入参数是员工号，输出员工的ID,姓名，销售总金额。信息用dbms_output包中的put或者put_line函数。输出的员工信息用左添加空格的多少表示员工的层次（LEVEL）。比如下面显示5个员工的信息：
 
 ```sql
-WITH A (EMPLOYEE_ID,NAME,EMAIL,PHONE_NUMBER,HIRE_DATE,SALARY,MANAGER_ID,DEPARTMENT_ID) AS
-  (SELECT EMPLOYEE_ID,NAME,EMAIL,PHONE_NUMBER,HIRE_DATE,SALARY,MANAGER_ID,DEPARTMENT_ID
-    FROM employees WHERE employee_ID = 12
-    UNION ALL
-  SELECT B.EMPLOYEE_ID,B.NAME,B.EMAIL,B.PHONE_NUMBER,B.HIRE_DATE,B.SALARY,B.MANAGER_ID,B.DEPARTMENT_ID
-    FROM A, employees B WHERE A.EMPLOYEE_ID = B.MANAGER_ID)
-SELECT * FROM A;
+PROCEDURE GET_EMPLOYEES(V_EMPLOYEE_ID NUMBER)
+  AS
+    LEFTSPACE VARCHAR(2000);
+    begin
+      --通过LEVEL判断递归的级别
+      LEFTSPACE:=' ';
+      --使用游标
+      for v in
+      (SELECT LEVEL,EMPLOYEE_ID,NAME,MANAGER_ID FROM employees
+      START WITH EMPLOYEE_ID = V_EMPLOYEE_ID
+      CONNECT BY PRIOR EMPLOYEE_ID = MANAGER_ID)
+      LOOP
+        DBMS_OUTPUT.PUT_LINE(LPAD(LEFTSPACE,(V.LEVEL-1)*4,' ')||
+                             V.EMPLOYEE_ID||' '||v.NAME);
+      END LOOP;
+    END;
 ```
 ![查询1结果](p3.png)
 
-##### 第四步：查询订单表，并且包括订单的订单应收货款: Trade_Receivable= sum(订单详单表.ProductNum*订单详单表.ProductPrice)- Discount
+##### 第四步：由于订单只是按日期分区的，上述统计是全表搜索，因此统计速度会比较慢，如何提高统计的速度呢？
 ```sql
-select * FROM ORDERS
+SELECT LEVEL,EMPLOYEE_ID,NAME,MANAGER_ID FROM employees 
+START WITH EMPLOYEE_ID = V_EMPLOYEE_ID 
+CONNECT BY PRIOR EMPLOYEE_ID = MANAGER_ID
 ```
 ![查询1结果](p4.png)
 
 
-##### 第五步：查询订单详表，要求显示订单的客户名称和客户电话，产品类型用汉字描述：
+##### 第五步：测试
+1、Get_SaleAmount()测试
 ```sql
-select c.customer_name,c.customer_tel, p.product_type AS 产品类型
-FROM orders c,order_details d,products p
-where d.product_name=p.product_name
-and  c.order_id=d.order_id 
+select count(*) from orders;
+select MyPack.SaleAmount(11) AS 部门11应收金额,MyPack.SaleAmount(12) AS 部门12应收金额 from dual;
 
 
 ```
 
 ![查询1结果](p5.png)
-#
-##### 第六步：查询出所有空订单，即没有订单详单的订单。
-``` sql
-select * from orders 
-where order_id NOT in(SELECT o.order_id from orders o,order_details d WHERE o.order_id=d.order_id)
+
+2、Get_Employees()测试
+```SQL
+set serveroutput on
+DECLARE
+  V_EMPLOYEE_ID NUMBER;    
+BEGIN
+  V_EMPLOYEE_ID := 1;
+  MYPACK.Get_Employees (  V_EMPLOYEE_ID => V_EMPLOYEE_ID) ;  
+  V_EMPLOYEE_ID := 11;
+  MYPACK.Get_Employees (  V_EMPLOYEE_ID => V_EMPLOYEE_ID) ;    
+END;
 ```
-###
 ![查询1结果](p6.png)
-#
 
 
-
-![查询1结果](p5.png)
-#
-##### 第七步：查询部门表，统计每个部门的销售总金额。
-``` sql
-select p.department_name,sum(sum1)
-from (
-select (d.product_num*d.product_price) sum1
-from order_details d,orders o,departments p,employees e where p.department_id=e.department_id
-and o.employee_id = e.employee_id and o.order_id=d.order_id),departments p
-group by p.department_name
-```
-###
-![查询1结果](p8.png)
-#
 
 ####总结：
-表与视图是oracle数据库对象中最基本的也是最主要的两个对象，在开发应用中使用的也是最多的。视图不占用物理空间，这个也是相对概念，因为视图本身的定义语句还是要存储在数据字典里的。视图只有逻辑定义。每次使用的时候,只是重新执行SQL。他能提供各种数据表现形式,执行某些必须使用视图的查询. 某些查询必须借助视图的帮助才能完成。
+PL /SQL是一种高级数据库程序设计语言，该语言专门用于在各种环境下对ORACLE数据库进行访问。包体已经在包定义和其他私人声明中声明的各种方法，这是从代码隐藏在包外的代码。CREATE PACKAGE BODY语句用于创建包体。
